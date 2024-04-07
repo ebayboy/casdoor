@@ -26,12 +26,12 @@ import (
 	"layeh.com/radius/rfc2865"
 	"layeh.com/radius/rfc2866"
 )
-
+// casdoor启动beegoserver
 func StartRadiusServer() {
 	secret := conf.GetConfigString("radiusSecret")
 	server := radius.PacketServer{
 		Addr:         "0.0.0.0:" + conf.GetConfigString("radiusServerPort"),
-		Handler:      radius.HandlerFunc(handlerRadius),
+		Handler:      radius.HandlerFunc(handlerRadius), // 回调处理入口
 		SecretSource: radius.StaticSecretSource([]byte(secret)),
 	}
 	log.Printf("Starting Radius server on %s", server.Addr)

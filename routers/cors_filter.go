@@ -70,13 +70,13 @@ func CorsFilter(ctx *context.Context) {
 
 	if origin != "" {
 		if origin == originConf {
-			setCorsHeaders(ctx, origin)
+			setCorsHeaders(ctx, origin) /// 检查配置中的origin是否和请求header的origin相等
 		} else if originHostname == host {
 			setCorsHeaders(ctx, origin)
 		} else if isHostIntranet(host) {
 			setCorsHeaders(ctx, origin)
 		} else {
-			ok, err := object.IsOriginAllowed(origin)
+			ok, err := object.IsOriginAllowed(origin) /// 检查是否在redirecturi中
 			if err != nil {
 				panic(err)
 			}
@@ -84,6 +84,7 @@ func CorsFilter(ctx *context.Context) {
 			if ok {
 				setCorsHeaders(ctx, origin)
 			} else {
+				// return 403 Forbidden
 				ctx.ResponseWriter.WriteHeader(http.StatusForbidden)
 				return
 			}

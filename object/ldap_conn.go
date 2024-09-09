@@ -18,11 +18,15 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"net"
+	"time"
 
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
 	goldap "github.com/go-ldap/ldap/v3"
 	"github.com/thanhpk/randstr"
+	log "github.com/sirupsen/logrus"
+	proxyproto "github.com/pires/go-proxyproto"
 )
 
 type LdapConn struct {
@@ -60,11 +64,59 @@ type LdapUser struct {
 
 func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 	var conn *goldap.Conn
+
+	log.Infof("=== GetLdapConn %s:%d", ldap.Host, ldap.Port)
+
+	// new ldap conn
+	target, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
+	tcpConn, err := net.DialTCP("tcp", nil, target)
+	if err != nil {
+		log.Errorf("=== net.DialTCP %s:%d error:%s", ldap.Host, ldap.Port, err.Error())
+		return nil, err
+	}
+	//defer tcpConn.Close()
+	log.Errorf("=== net.DialTCP %s:%d success!", ldap.Host, ldap.Port)
+	header := &proxyproto.Header{
+		Version:           2,
+		Command:           proxyproto.PROXY,
+		TransportProtocol: proxyproto.TCPv4,
+		// 填写cgid的id: 将cgid存储到4字节的IPv4地址中
+		SourceAddr: &net.TCPAddr{
+			IP:   net.ParseIP("5.57.127.177"), // 87654321 -> 5.57.127.177
+			Port: 1000,
+		},
+		DestinationAddr: &net.TCPAddr{
+			IP:   net.ParseIP("192.168.0.69"),
+			Port: 389,
+		},
+	}
+	_, err = header.WriteTo(tcpConn)
+	if err != nil {
+		log.Errorf("=== header.WriteTo proxyproto error:%s header:[%v]", err.Error(), header)
+		return  nil, err
+	}
+	log.Infof("=== header.WriteTo proxyproto success! header:[%v]", header)
+
+	conn = goldap.NewConn(tcpConn, ldap.EnableSsl)
+	conn.SetTimeout(time.Duration(30) * time.Second)
+	conn.Start()
+	log.Infof("=== ldap conn.Start() done!")
+
+	/*
 	if ldap.EnableSsl {
 		conn, err = goldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port), nil)
 	} else {
 		conn, err = goldap.Dial("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
 	}
+	*/
+
+	/*
+	if ldap.EnableSsl {
+		conn, err = goldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port), nil)
+	} else {
+		conn, err = goldap.Dial("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
+	}
+	*/
 
 	if err != nil {
 		return nil, err
@@ -72,13 +124,18 @@ func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 
 	err = conn.Bind(ldap.Username, ldap.Password)
 	if err != nil {
+		log.Errorf("=== conn.Bind error: %s!", err.Error())
 		return nil, err
 	}
+	log.Infof("=== conn.Bind success!")
 
 	isAD, err := isMicrosoftAD(conn)
 	if err != nil {
+		log.Errorf("=== isMicrosoftAD error: %s!", err.Error())
 		return nil, err
 	}
+
+	log.Infof("=== return LdapConn: [%v]", conn)
 	return &LdapConn{Conn: conn, IsAD: isAD}, nil
 }
 

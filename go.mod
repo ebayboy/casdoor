@@ -38,6 +38,7 @@ require (
 	github.com/markbates/goth v1.79.0
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/nyaruka/phonenumbers v1.1.5
+	github.com/pires/go-proxyproto v0.7.0
 	github.com/pquerna/otp v1.4.0
 	github.com/prometheus/client_golang v1.11.1
 	github.com/prometheus/client_model v0.4.0
@@ -49,6 +50,7 @@ require (
 	github.com/shiena/ansicolor v0.0.0-20200904210342-c7312218db18 // indirect
 	github.com/shirou/gopsutil v3.21.11+incompatible
 	github.com/siddontang/go-log v0.0.0-20190221022429-1e957dd83bed
+	github.com/sirupsen/logrus v1.9.0
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/stretchr/testify v1.9.0
 	github.com/stripe/stripe-go/v74 v74.29.0

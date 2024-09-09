@@ -20,6 +20,7 @@ import (
 	"strings"
 	"net"
 	"time"
+	"strconv"
 
 	"github.com/casdoor/casdoor/conf"
 	"github.com/casdoor/casdoor/util"
@@ -65,61 +66,83 @@ type LdapUser struct {
 func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 	var conn *goldap.Conn
 
-	log.Infof("=== GetLdapConn %s:%d", ldap.Host, ldap.Port)
+	log.Infof("=== GetLdapConn %s:%d ServerName:[%s] ssl:[%v]", ldap.Host, ldap.Port, ldap.ServerName, ldap.EnableSsl)
 
-	// new ldap conn
-	target, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
-	tcpConn, err := net.DialTCP("tcp", nil, target)
-	if err != nil {
-		log.Errorf("=== net.DialTCP %s:%d error:%s", ldap.Host, ldap.Port, err.Error())
-		return nil, err
-	}
-	//defer tcpConn.Close()
-	log.Errorf("=== net.DialTCP %s:%d success!", ldap.Host, ldap.Port)
-	header := &proxyproto.Header{
-		Version:           2,
-		Command:           proxyproto.PROXY,
-		TransportProtocol: proxyproto.TCPv4,
-		// 填写cgid的id: 将cgid存储到4字节的IPv4地址中
-		SourceAddr: &net.TCPAddr{
-			IP:   net.ParseIP("5.57.127.177"), // 87654321 -> 5.57.127.177
-			Port: 1000,
-		},
-		DestinationAddr: &net.TCPAddr{
-			IP:   net.ParseIP("192.168.0.69"),
-			Port: 389,
-		},
-	}
-	_, err = header.WriteTo(tcpConn)
-	if err != nil {
-		log.Errorf("=== header.WriteTo proxyproto error:%s header:[%v]", err.Error(), header)
-		return  nil, err
-	}
-	log.Infof("=== header.WriteTo proxyproto success! header:[%v]", header)
+	items := strings.Split(ldap.Host, "#")
+	if len(items)  == 3 {
+		// 1. process contain #
+		// "=== GetLdapConn 114.67.161.129#cg-uxhsrdhr0i#192.168.0.69:389:1082"
 
-	conn = goldap.NewConn(tcpConn, ldap.EnableSsl)
-	conn.SetTimeout(time.Duration(30) * time.Second)
-	conn.Start()
-	log.Infof("=== ldap conn.Start() done!")
+		// tcp # proxyproto
+		log.Infof("=== items:[0]=[%s] items[1]=[%s] items[2]=[%s]",items[0], items[1], items[2])
 
-	/*
-	if ldap.EnableSsl {
-		conn, err = goldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port), nil)
+		// net.DialTCP ldap://114.67.161.129/cg-uxhsrdhr0i:1082 error:dial tcp: missing address"
+
+		// new ldap conn
+		target, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", items[0], ldap.Port))
+		tcpConn, err := net.DialTCP("tcp", nil, target)
+		if err != nil {
+			log.Errorf("=== net.DialTCP %s:%d error:%s", ldap.Host, ldap.Port, err.Error())
+			return nil, err
+		}
+
+		//defer tcpConn.Close()
+		log.Errorf("=== net.DialTCP %s:%d success!", ldap.Host, ldap.Port)
+
+		ups := strings.Split(items[2], ":")
+		if  len(ups) != 2 {
+			log.Errorf("ups:[%v]", ups)
+			return nil, err
+		}
+
+		dport, err := strconv.Atoi(ups[1])
+		if err != nil {
+			log.Errorf("=== strconv.Atoi error:%s", err.Error)
+			return nil, err
+		}
+		
+		header := &proxyproto.Header{
+			Version:           2,
+			Command:           proxyproto.PROXY,
+			TransportProtocol: proxyproto.TCPv4,
+			// 填写cgid的id: 将cgid存储到4字节的IPv4地址中
+			SourceAddr: &net.TCPAddr{
+				IP:   net.ParseIP("5.57.127.177"), // 87654321 -> 5.57.127.177
+				Port: 1000,
+			},
+			DestinationAddr: &net.TCPAddr{
+				IP:   net.ParseIP(ups[0]),  //  192.168.0.69
+				Port: dport, // 389
+			},
+		}
+
+		log.Infof("proxyproto dip:%s dport:%d", items[1], dport)
+		_, err = header.WriteTo(tcpConn)
+		if err != nil {
+			log.Errorf("=== header.WriteTo proxyproto error:%s header:[%v]", err.Error(), header)
+			return  nil, err
+		}
+		log.Infof("=== header.WriteTo proxyproto success! header:[%v] ldap.EnableSsl:[%v]", header, ldap.EnableSsl)
+
+		conn = goldap.NewConn(tcpConn, ldap.EnableSsl)
+		conn.SetTimeout(time.Duration(30) * time.Second)
+		conn.Start()
+		log.Infof("=== ldap conn.Start() done!")
 	} else {
-		conn, err = goldap.Dial("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
-	}
-	*/
-
-	/*
-	if ldap.EnableSsl {
-		conn, err = goldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port), nil)
-	} else {
-		conn, err = goldap.Dial("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
-	}
-	*/
-
-	if err != nil {
-		return nil, err
+		// origin tcp
+		if ldap.EnableSsl {
+			conn, err = goldap.DialTLS("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port), nil)
+			if err != nil {
+				log.Errorf("=== goldap.DialTLS error:%s", err.Error())
+				return nil, err
+			}
+		} else {
+			conn, err = goldap.Dial("tcp", fmt.Sprintf("%s:%d", ldap.Host, ldap.Port))
+			if err != nil {
+				log.Errorf("=== goldap.Dial error:%s", err.Error())
+				return nil, err
+			}
+		}
 	}
 
 	err = conn.Bind(ldap.Username, ldap.Password)

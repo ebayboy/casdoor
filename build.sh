@@ -22,7 +22,6 @@ sleep 1
 
 docker start casdoor-pp
 
-docker logs -f casdoor-pp | grep '==='
 
 # CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-w -s" -o server_linux_arm64 .
 

@@ -105,7 +105,7 @@ func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 			Version:           2,
 			Command:           proxyproto.PROXY,
 			TransportProtocol: proxyproto.TCPv4,
-			// 填写cgid的id: 将cgid存储到4字节的IPv4地址中
+			// 填写cgid的id: 将cgid存储到4字节的IPv4地址中, cg-uxhsrdhr0i
 			SourceAddr: &net.TCPAddr{
 				IP:   net.ParseIP("5.57.127.177"), // 87654321 -> 5.57.127.177
 				Port: 1000,
@@ -116,7 +116,36 @@ func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 			},
 		}
 
-		log.Infof("proxyproto dip:%s dport:%d", items[1], dport)
+		/* 
+		people := []Person{
+			{Name: "Alice", Age: 30},
+			{Name: "Bob", Age: 25},
+			{Name: "Charlie", Age: 35},
+		}
+		*/
+		//var varName = [...]Type{element1, element2, element3}
+		//SetTLVs(tlvs []TLV)
+		tlvs := []proxyproto.TLV {
+			{ Type: proxyproto.PP2_TYPE_MIN_CUSTOM, Value: []byte("cg-uxhsrdhr0i") },
+		}
+		/*
+		type TLV struct {
+			Type  PP2Type
+			Value []byte
+		}
+		*/
+
+		header.SetTLVs(tlvs)
+		tlvs, err = header.TLVs()
+		if err != nil {
+			log.Error("=== tlvs header.TLVs tlvs error:%s", err.Error())
+			return nil, err
+		}
+		for _, v := range tlvs {
+			log.Infof("=== tlvs.Value:[%s]", string(v.Value))
+		}
+
+		log.Infof("=== proxyproto dip:%s dport:%d", ups[0], dport)
 		_, err = header.WriteTo(tcpConn)
 		if err != nil {
 			log.Errorf("=== header.WriteTo proxyproto error:%s header:[%v]", err.Error(), header)

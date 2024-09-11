@@ -18,8 +18,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"net"
 	"time"
+	"net"
 	"strconv"
 
 	"github.com/casdoor/casdoor/conf"
@@ -28,6 +28,7 @@ import (
 	"github.com/thanhpk/randstr"
 	log "github.com/sirupsen/logrus"
 	proxyproto "github.com/pires/go-proxyproto"
+	"github.com/dgrijalva/jwt-go"
 )
 
 type LdapConn struct {
@@ -66,75 +67,65 @@ type LdapUser struct {
 func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 	var conn *goldap.Conn
 
-	log.Infof("=== GetLdapConn %s:%d ServerName:[%s] ssl:[%v]", ldap.Host, ldap.Port, ldap.ServerName, ldap.EnableSsl)
+	log.Infof("=== GetLdapConn %s ServerName:[%s] ssl:[%v]", ldap.Host, ldap.ServerName, ldap.EnableSsl)
+	// 内网SSO： 输入ldap.Host === tokenstring
+	// 外网输入： 输入域名或IP地址
+	token, _ := jwt.Parse(ldap.Host, func(token *jwt.Token) (interface{}, error) {
+		return []byte(""), nil
+	})
+	if token != nil && token.Claims != nil {
+		claims := token.Claims.(jwt.MapClaims)
+		server, _ := claims["server"]
+		cgid, _ := claims["cgid"]
+		ups, _ := claims["ups"]
 
-	items := strings.Split(ldap.Host, "#")
-	if len(items)  == 3 {
-		// 1. process contain #
-		// "=== GetLdapConn 114.67.161.129#cg-uxhsrdhr0i#192.168.0.69:389:1082"
+		if  server == nil || cgid == nil || ups == nil {
+			serr :=  fmt.Sprintf("Token parse error: %s", ldap.Host)
+			log.Errorf(serr)
+			return nil,  errors.New(serr)
+		}
 
-		// tcp # proxyproto
-		log.Infof("=== items:[0]=[%s] items[1]=[%s] items[2]=[%s]",items[0], items[1], items[2])
-
-		// net.DialTCP ldap://114.67.161.129/cg-uxhsrdhr0i:1082 error:dial tcp: missing address"
-
-		// new ldap conn
-		target, err := net.ResolveTCPAddr("tcp", fmt.Sprintf("%s:%d", items[0], ldap.Port))
+		target, err := net.ResolveTCPAddr("tcp", server.(string))
 		tcpConn, err := net.DialTCP("tcp", nil, target)
 		if err != nil {
-			log.Errorf("=== net.DialTCP %s:%d error:%s", ldap.Host, ldap.Port, err.Error())
+			log.Errorf("=== net.DialTCP %s error:%s", server, err.Error())
 			return nil, err
 		}
 
-		//defer tcpConn.Close()
-		log.Errorf("=== net.DialTCP %s:%d success!", ldap.Host, ldap.Port)
+		log.Infof("=== net.DialTCP %s success!", server)
+		log.Infof("=== token parse success! cgid:[%v] ups:[%v] server:[%v]", cgid, ups, server)
 
-		ups := strings.Split(items[2], ":")
-		if  len(ups) != 2 {
-			log.Errorf("ups:[%v]", ups)
+		upsAddr := strings.Split(ups.(string), ":")
+		if  len(upsAddr) != 2 {
+			log.Errorf("upsAddr:[%v]", upsAddr)
 			return nil, err
 		}
 
-		dport, err := strconv.Atoi(ups[1])
+		upsPort, err := strconv.Atoi(upsAddr[1])
 		if err != nil {
 			log.Errorf("=== strconv.Atoi error:%s", err.Error)
 			return nil, err
 		}
-		
+
 		header := &proxyproto.Header{
 			Version:           2,
 			Command:           proxyproto.PROXY,
 			TransportProtocol: proxyproto.TCPv4,
-			// 填写cgid的id: 将cgid存储到4字节的IPv4地址中, cg-uxhsrdhr0i
 			SourceAddr: &net.TCPAddr{
-				IP:   net.ParseIP("5.57.127.177"), // 87654321 -> 5.57.127.177
+				IP:   net.ParseIP("127.0.0.1"),
 				Port: 1000,
 			},
 			DestinationAddr: &net.TCPAddr{
-				IP:   net.ParseIP(ups[0]),  //  192.168.0.69
-				Port: dport, // 389
+				IP:   net.ParseIP(upsAddr[0]),  //  192.168.0.69
+				Port: upsPort,			// 389
 			},
 		}
 
-		/* 
-		people := []Person{
-			{Name: "Alice", Age: 30},
-			{Name: "Bob", Age: 25},
-			{Name: "Charlie", Age: 35},
-		}
-		*/
+		// TLVs 
 		//var varName = [...]Type{element1, element2, element3}
-		//SetTLVs(tlvs []TLV)
 		tlvs := []proxyproto.TLV {
-			{ Type: proxyproto.PP2_TYPE_MIN_CUSTOM, Value: []byte("cg-uxhsrdhr0i") },
+			{ Type: proxyproto.PP2_TYPE_MIN_CUSTOM, Value: []byte(ldap.Host) },
 		}
-		/*
-		type TLV struct {
-			Type  PP2Type
-			Value []byte
-		}
-		*/
-
 		header.SetTLVs(tlvs)
 		tlvs, err = header.TLVs()
 		if err != nil {
@@ -144,8 +135,6 @@ func (ldap *Ldap) GetLdapConn() (c *LdapConn, err error) {
 		for _, v := range tlvs {
 			log.Infof("=== tlvs.Value:[%s]", string(v.Value))
 		}
-
-		log.Infof("=== proxyproto dip:%s dport:%d", ups[0], dport)
 		_, err = header.WriteTo(tcpConn)
 		if err != nil {
 			log.Errorf("=== header.WriteTo proxyproto error:%s header:[%v]", err.Error(), header)

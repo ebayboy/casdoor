@@ -10,17 +10,21 @@
 #    export GOPROXY="https://goproxy.cn,direct"
 #fi
 
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o server_linux_amd64 .  || exit 1
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o casdoor_linux_amd64 .  || exit 1
 
 docker stop casdoor-pp 
 
 sleep 1
 
-/bin/cp server_linux_amd64  /usr/local/docker/casdoor-pp/bin/
+/bin/cp casdoor_linux_amd64  /usr/local/docker/casdoor-pp/bin/
 
 sleep 1 
 
 docker start casdoor-pp
+
+sleep 1
+
+docker logs -f casdoor-pp
 
 
 # CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-w -s" -o server_linux_arm64 .

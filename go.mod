@@ -17,6 +17,7 @@ require (
 	github.com/casvisor/casvisor-go-sdk v1.4.0
 	github.com/dchest/captcha v0.0.0-20200903113550-03f5f0333e1f
 	github.com/denisenkom/go-mssqldb v0.9.0
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/elazarl/go-bindata-assetfs v1.0.1 // indirect
 	github.com/elimity-com/scim v0.0.0-20230426070224-941a5eac92f3
 	github.com/fogleman/gg v1.3.0
